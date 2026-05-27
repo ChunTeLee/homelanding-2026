@@ -1,0 +1,5 @@
+# Build/scratch artifacts
+_figma-graphic.png
+__pycache__/
+*.pyc
+.DS_Store
