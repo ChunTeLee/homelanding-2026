@@ -388,6 +388,15 @@
   // when SCORE[i] * 100 < density.
   var density = 100;
   var visibleSlots = [];
+  // Slot indices that are EXTRA hidden in Left-right twinkle mode -- the
+  // back-row logos that overlap heavily with closer-to-front ones. Hiding
+  // these makes the moving cluster read on the front silhouette of the
+  // pile instead of getting buried behind near-duplicate neighbours.
+  var LR_DEDUP_HIDDEN = [3,6,7,8,10,11,12,13,14,16,17,19,20,21,22,25,26,27,28,29,30,32,36,41,42,43,44,45,46,47,48,51,53,57,58,61,63,64,69,70,73,74,75,78,81,85,88,89,95,96,103,110,112,114];
+  var LR_DEDUP_HIDDEN_SET = {};
+  for (var __i = 0; __i < LR_DEDUP_HIDDEN.length; __i++) {
+    LR_DEDUP_HIDDEN_SET[LR_DEDUP_HIDDEN[__i]] = true;
+  }
   var pileStack = svg.closest('.pile-stack');
 
   // === Twinkle (random) ===
@@ -436,6 +445,11 @@
     visibleSlots = [];
     slots.forEach(function (g, i) {
       var visible = SCORE[i] * 100 < density;
+      // Extra dedup pass for Left-right twinkle only -- drop back-row
+      // overlapped duplicates so the sweep cluster reads cleanly.
+      if (visible && version === 'lrtwinkle' && LR_DEDUP_HIDDEN_SET[i]) {
+        visible = false;
+      }
       g.classList.toggle('is-hidden', !visible);
       if (visible) visibleSlots.push(i);
 
