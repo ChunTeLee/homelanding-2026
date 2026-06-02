@@ -286,8 +286,8 @@
     </div>
     <label class="pile-widget__density">
       <span class="pile-widget__label">Density</span>
-      <input type="range" min="0" max="100" value="35" id="pile-density" class="pile-widget__slider">
-      <span id="pile-density-val" class="pile-widget__val">35%</span>
+      <input type="range" min="0" max="100" value="100" id="pile-density" class="pile-widget__slider">
+      <span id="pile-density-val" class="pile-widget__val">100%</span>
     </label>
   </div>
 
@@ -335,6 +335,9 @@
   .hf-slot__dashed { display: none; }
   .hf-slot.is-dashed > .hf-slot__solid { display: none; }
   .hf-slot.is-dashed > .hf-slot__dashed { display: inline; }
+  /* Density: the global slider sets a threshold; slots above the threshold
+     get .is-hidden and drop out of the SVG entirely. Applies to every mode. */
+  .hf-slot.is-hidden { display: none; }
   /* Twinkle: the regular (colored) logo overlay inside each .hf-slot__dashed
      sits at opacity 0 until JS adds .is-lit to its parent slot. The transition
      IS the animation -- 2s ease-in-out for the smoothest possible breath
@@ -377,10 +380,14 @@
   slots.forEach(function (g, i) { SCORE[i] = rng(i * 2654435761 + 7)(); });
 
   // Twinkle is now the first button and the default landing state so the
-  // page lands on the animated view -- "All dashed" / "Mix" sit as escape
-  // hatches to the right.
+  // page lands on the animated view -- the other modes sit to the right.
   var version = 'twinkle';
-  var density = 35;
+  // Density is now a GLOBAL control for the total icons in the pile. 100%
+  // = the full 119 slots, 0% = empty. It applies to every mode, not just
+  // Mix. Each slot has a stable per-slot SCORE in 0..1; a slot is visible
+  // when SCORE[i] * 100 < density.
+  var density = 100;
+  var visibleSlots = [];
   var pileStack = svg.closest('.pile-stack');
 
   // === Twinkle (random) ===
@@ -423,22 +430,40 @@
   var lrtSweepStartTime = 0;
 
   function apply() {
-    // Static dashed/solid assignment per slot. Both 'all' and 'twinkle' make
-    // every slot dashed; 'mix' uses the density threshold.
+    // Recompute visibility from density: any slot whose stable SCORE is
+    // above density/100 drops out via .is-hidden. visibleSlots[] mirrors
+    // the on-set so the animation pickers don't have to walk all 119 slots.
+    visibleSlots = [];
     slots.forEach(function (g, i) {
-      var on = version !== 'mix' || SCORE[i] * 100 < density;
-      g.classList.toggle('is-dashed', on);
-      // Toggle the [hidden] attribute too, for browsers that respect it on
-      // <g> regardless of CSS specificity.
+      var visible = SCORE[i] * 100 < density;
+      g.classList.toggle('is-hidden', !visible);
+      if (visible) visibleSlots.push(i);
+
+      // Dashed vs solid is now purely a function of mode:
+      //   - twinkle / lrtwinkle  -> dashed (the regular logo twinkles on top)
+      //   - mix                  -> solid  (the original colorful pile)
+      var dashed = (version !== 'mix');
+      g.classList.toggle('is-dashed', dashed);
       var dashedChild = g.querySelector('.hf-slot__dashed');
       var solidChild = g.querySelector('.hf-slot__solid');
       if (dashedChild) {
-        if (on) dashedChild.removeAttribute('hidden');
+        if (dashed) dashedChild.removeAttribute('hidden');
         else dashedChild.setAttribute('hidden', '');
       }
       if (solidChild) {
-        if (on) solidChild.setAttribute('hidden', '');
+        if (dashed) solidChild.setAttribute('hidden', '');
         else solidChild.removeAttribute('hidden');
+      }
+    });
+    // Any currently-lit slot that just became hidden needs to release its
+    // .is-lit so the litSlots buffers stay clean.
+    [litSlots, lrtLitSlots].forEach(function (buf) {
+      for (var j = buf.length - 1; j >= 0; j--) {
+        var idx = buf[j];
+        if (slots[idx] && slots[idx].classList.contains('is-hidden')) {
+          slots[idx].classList.remove('is-lit');
+          buf.splice(j, 1);
+        }
       }
     });
     // Start/stop the two animation modes. Mix doesn't animate.
@@ -452,20 +477,18 @@
       stopTwinkle();
       stopLrTwinkle();
     }
-    // Density slider only matters in Mix; otherwise grey it out.
-    var densityRow = document.querySelector('.pile-widget__density');
-    if (densityRow) densityRow.classList.toggle('is-disabled', version !== 'mix');
   }
 
   function pickFreshSlot() {
-    // Pick a random slot index not currently lit. Bail after a few tries to
-    // avoid infinite loops if too many are lit (shouldn't happen).
-    var N = slots.length;
-    for (var tries = 0; tries < 50; tries++) {
-      var idx = Math.floor(Math.random() * N);
-      if (litSlots.indexOf(idx) === -1) return idx;
+    // Pick a random *visible* slot not currently lit. Returns -1 if none.
+    if (visibleSlots.length === 0) return -1;
+    var candidates = [];
+    for (var k = 0; k < visibleSlots.length; k++) {
+      var idx = visibleSlots[k];
+      if (litSlots.indexOf(idx) === -1) candidates.push(idx);
     }
-    return Math.floor(Math.random() * N);
+    if (candidates.length === 0) return -1;
+    return candidates[Math.floor(Math.random() * candidates.length)];
   }
 
   function twinkleTick() {
@@ -475,9 +498,10 @@
       var drop = litSlots.shift();
       if (slots[drop]) slots[drop].classList.remove('is-lit');
     }
-    // Then add a fresh one.
+    // Then add a fresh one. pickFreshSlot returns -1 if density is so low
+    // there are no visible slots to pick.
     var next = pickFreshSlot();
-    if (slots[next]) {
+    if (next >= 0 && slots[next]) {
       slots[next].classList.add('is-lit');
       litSlots.push(next);
     }
@@ -519,14 +543,17 @@
   }
 
   function pickFreshSlotNearSweep() {
-    // Pick a random un-lit slot whose centre x is within ±LRT_WINDOW
-    // of the current sweep position. If no candidates, fall back to the
-    // closest un-lit slot so the animation never stalls.
+    // Pick a random un-lit, *visible* slot whose centre x is within
+    // ±LRT_WINDOW of the current sweep position. If no candidates in the
+    // window, fall back to the closest un-lit visible slot so the
+    // animation never stalls.
+    if (visibleSlots.length === 0) return -1;
     var sweepX = getSweepX();
     var inWindow = [];
     var bestI = -1;
     var bestDist = Infinity;
-    for (var i = 0; i < slots.length; i++) {
+    for (var k = 0; k < visibleSlots.length; k++) {
+      var i = visibleSlots[k];
       if (lrtLitSlots.indexOf(i) !== -1) continue;
       var cx = parseFloat(slots[i].getAttribute('data-cx'));
       var dist = Math.abs(cx - sweepX);
@@ -597,7 +624,9 @@
       density = parseInt(e.target.value, 10) || 0;
       var v = document.getElementById('pile-density-val');
       if (v) v.textContent = density + '%';
-      if (version === 'mix') apply();
+      // Density is global now -- every mode needs to re-evaluate which
+      // slots are visible.
+      apply();
     });
   }
   apply();
