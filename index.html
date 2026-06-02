@@ -348,6 +348,14 @@
   .pile-stack.is-twinkling .hf-slot.is-lit .hf-img-regular {
     opacity: 1;
   }
+  /* Left-right twinkle uses the same .is-lit + .hf-img-regular plumbing but
+     wants a much tighter cluster moving across the pile. The default 2s fade
+     drags each bulb on for too long, smearing the trail across half the
+     pile. Tightening the fade specifically for LR mode keeps the lit cluster
+     compact, so the sweep direction reads clearly. */
+  .pile-stack.is-lr-sweeping .hf-img-regular {
+    transition-duration: 700ms;
+  }
 </style>
 <script>
 (function () {
@@ -396,13 +404,21 @@
   // the pile from left to right, while still feeling sparkly/random
   // because the actual slot is picked at random within the current
   // window.
+  // Tight cluster ~5 bulbs wide, drifting noticeably L->R.
+  //   visible at peak = LRT_ACTIVE + (FADE_MS / INTERVAL_MS)  -- with the
+  //   LR-mode fade override of 700ms (see CSS) plus the values below, the
+  //   peak count is 4 + 700/320 ~= 6.2 -- comfortably in the 5-6 ask.
+  //   trail spread on pile = (buffer + fade) * (pile_span / sweep_ms)
+  //                        ~ (1280 + 700) * (2182 / 7000) ~= 617px
+  //   That's ~35% of pile width visible at a time -- compact enough to
+  //   read as a moving cluster, not a static glow.
   var lrTwinkleTimer = null;
-  var LRT_ACTIVE = 5;              // 5-6 at one time
-  var LRT_INTERVAL_MS = 600;
-  var LRT_SWEEP_MS = 9000;         // full L->R pass in ~9 seconds
+  var LRT_ACTIVE = 4;
+  var LRT_INTERVAL_MS = 320;
+  var LRT_SWEEP_MS = 7000;         // full L->R pass in ~7 seconds
   var LRT_SWEEP_START_X = -200;
   var LRT_SWEEP_END_X = 1982;
-  var LRT_WINDOW = 260;            // ± px around the sweep position
+  var LRT_WINDOW = 100;            // ± px around the sweep position
   var lrtLitSlots = [];
   var lrtSweepStartTime = 0;
 
@@ -537,7 +553,14 @@
 
   function startLrTwinkle() {
     if (lrTwinkleTimer) return;
-    if (pileStack) pileStack.classList.add('is-twinkling');
+    // .is-twinkling -> CSS opacity rule kicks in for any .is-lit bulb.
+    // .is-lr-sweeping -> CSS overrides the fade transition-duration so the
+    // bulbs fade faster than in regular Twinkle, keeping the moving cluster
+    // visually tight.
+    if (pileStack) {
+      pileStack.classList.add('is-twinkling');
+      pileStack.classList.add('is-lr-sweeping');
+    }
     lrtSweepStartTime = Date.now();
     for (var k = 0; k < LRT_ACTIVE; k++) lrTwinkleTick();
     lrTwinkleTimer = setInterval(lrTwinkleTick, LRT_INTERVAL_MS);
@@ -548,7 +571,10 @@
       clearInterval(lrTwinkleTimer);
       lrTwinkleTimer = null;
     }
-    if (pileStack) pileStack.classList.remove('is-twinkling');
+    if (pileStack) {
+      pileStack.classList.remove('is-twinkling');
+      pileStack.classList.remove('is-lr-sweeping');
+    }
     lrtLitSlots.forEach(function (i) {
       if (slots[i]) slots[i].classList.remove('is-lit');
     });
