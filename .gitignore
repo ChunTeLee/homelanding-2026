@@ -1,5 +1,26 @@
 # Build/scratch artifacts
-_figma-graphic.png
+_*.html
+_*.svg
+_*.png
+_*.json
+_install_*.py
 __pycache__/
 *.pyc
 .DS_Store
+.claude/
+
+# Figma exports kept locally for reference but not currently referenced by index.html.
+# gitignore uses glob patterns (no shell quoting); spaces are literal.
+Move-faster-*.svg
+Move-faster-*.png
+Team & Enterprise *.svg
+Compute Graphic.svg
+compute graphic*.svg
+compute graphic*.png
+dashed border logo.svg
+dataset-enterprise-*.svg
+dataset-hatch-enterprise-*.svg
+hf-logo-dashed-light-1.svg
+logo pattern *.svg
+model-enterprise-*.svg
+model-hatch-enterprise-*.svg
