@@ -337,11 +337,11 @@
   .hf-slot.is-dashed > .hf-slot__dashed { display: inline; }
   /* Twinkle: the regular (colored) logo overlay inside each .hf-slot__dashed
      sits at opacity 0 until JS adds .is-lit to its parent slot. The transition
-     is the actual animation -- it fades the regular logo in over ~0.8s and
+     is the actual animation -- it fades the regular logo in over ~2s and
      back out the same way, like a slow Christmas bulb. */
   .hf-img-regular {
     opacity: 0;
-    transition: opacity 800ms ease;
+    transition: opacity 2000ms ease;
     pointer-events: none;
   }
   .pile-stack.is-twinkling .hf-slot.is-lit .hf-img-regular {
@@ -373,7 +373,7 @@
   // Twinkle state
   var twinkleTimer = null;
   var TWINKLE_ACTIVE = 4;          // how many bulbs lit at once (3-5)
-  var TWINKLE_INTERVAL_MS = 700;   // gap between swap-ins; fade is 800ms (CSS)
+  var TWINKLE_INTERVAL_MS = 1600;  // gap between swap-ins; fade is 2000ms (CSS)
   var litSlots = [];               // current set of lit slot indices
 
   function apply() {
