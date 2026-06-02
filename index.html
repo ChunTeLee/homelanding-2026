@@ -337,11 +337,12 @@
   .hf-slot.is-dashed > .hf-slot__dashed { display: inline; }
   /* Twinkle: the regular (colored) logo overlay inside each .hf-slot__dashed
      sits at opacity 0 until JS adds .is-lit to its parent slot. The transition
-     is the actual animation -- it fades the regular logo in over ~2s and
-     back out the same way, like a slow Christmas bulb. */
+     is the actual animation -- it fades the regular logo in over ~1.2s and
+     back out the same way. Shorter fade + faster swap-in keeps any one bulb
+     from holding at peak too long. */
   .hf-img-regular {
     opacity: 0;
-    transition: opacity 2000ms ease;
+    transition: opacity 1200ms ease;
     pointer-events: none;
   }
   .pile-stack.is-twinkling .hf-slot.is-lit .hf-img-regular {
@@ -372,8 +373,15 @@
   var pileStack = svg.closest('.pile-stack');
   // Twinkle state
   var twinkleTimer = null;
-  var TWINKLE_ACTIVE = 6;          // how many bulbs lit at once (5-8)
-  var TWINKLE_INTERVAL_MS = 1600;  // gap between swap-ins; fade is 2000ms (CSS)
+  // Target ~9 bulbs concurrently visible (8-10). Math:
+  //   visible at steady state = TWINKLE_ACTIVE + (FADE / INTERVAL)
+  //   peak-hold time per bulb  = TWINKLE_ACTIVE * INTERVAL - FADE
+  // With 8 in the rolling .is-lit buffer + 3 still fading out at any moment,
+  // that's ~11 strokes visible (about 8 of them at clear opacity), and each
+  // bulb holds at full only ~800ms before fade-out starts (vs. several
+  // seconds in the old configuration).
+  var TWINKLE_ACTIVE = 8;
+  var TWINKLE_INTERVAL_MS = 400;   // swap-in cadence; fade is 1200ms (CSS)
   var litSlots = [];               // current set of lit slot indices
 
   function apply() {
