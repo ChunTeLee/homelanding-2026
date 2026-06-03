@@ -397,17 +397,23 @@
     SCORE[i]  = rng(i * 2654435761 + 7)();
     SCORE2[i] = rng(i * 2654435761 + 13)();
   });
-  // Threshold for Mix's dashed:solid split. 0.9 == ~90% dashed, 10% solid.
-  var MIX_DASHED_THRESHOLD = 0.9;
+  // Removed: the static MIX_DASHED_THRESHOLD constant -- the slider
+  // drives the threshold directly in Mix mode now (see apply()).
 
   // Twinkle is now the first button and the default landing state so the
   // page lands on the animated view -- the other modes sit to the right.
   var version = 'twinkle';
-  // Density is now a GLOBAL control for the total icons in the pile. 100%
-  // = the full 119 slots, 0% = empty. It applies to every mode, not just
-  // Mix. Each slot has a stable per-slot SCORE in 0..1; a slot is visible
-  // when SCORE[i] * 100 < density.
-  var density = 100;
+  // The density slider's MEANING is per-mode:
+  //   * twinkle / lrtwinkle / wave: density = total icons visible
+  //     (SCORE[i]*100 < density). 100 = full pile, 0 = empty.
+  //   * mix: density = % of slots that are DASHED (the rest are the
+  //     original colourful regular logos). 100 = all dashed, 0 = all
+  //     regular. Total visible is fixed at 100% in Mix.
+  // Each mode remembers its own last value so switching modes restores
+  // a sensible state for that mode instead of dragging one number across
+  // semantics.
+  var densityByMode = { twinkle: 100, lrtwinkle: 100, wave: 100, mix: 90 };
+  var density = densityByMode[version];
   var visibleSlots = [];
   // Slot indices that are EXTRA hidden in Left-right twinkle mode -- the
   // back-row logos that overlap heavily with closer-to-front ones. Hiding
@@ -465,11 +471,15 @@
     // the on-set so the animation pickers don't have to walk all 119 slots.
     visibleSlots = [];
     // Track per-index density-visibility (NOT counting the LR dedup) so the
-    // Wave overlay can mirror it. The LR dedup is a Left-right-twinkle-only
-    // thing; Wave shows the full density-filtered set.
+    // Wave overlay can mirror it.
     var densityVisible = new Array(slots.length);
+    var inMix = (version === 'mix');
     slots.forEach(function (g, i) {
-      var visible = SCORE[i] * 100 < density;
+      // Visibility:
+      //   * non-mix modes: thresholded by the slider via SCORE.
+      //   * mix mode: every slot is visible. The slider now drives the
+      //     dashed:solid split instead (see below).
+      var visible = inMix ? true : (SCORE[i] * 100 < density);
       densityVisible[i] = visible;
       // Extra dedup pass for Left-right twinkle only -- drop back-row
       // overlapped duplicates so the sweep cluster reads cleanly.
@@ -480,17 +490,20 @@
       if (visible) visibleSlots.push(i);
 
       // Dashed vs solid:
-      //   - twinkle / lrtwinkle / wave -> always dashed (regular layer
+      //   * twinkle / lrtwinkle / wave: always dashed (regular layer
       //     either twinkles or sweeps on top, depending on mode).
-      //   - mix -> per-slot coin flip via SCORE2 against
-      //     MIX_DASHED_THRESHOLD. Stable across density changes, so
-      //     dashed identity sticks to specific slots regardless of how
-      //     many are visible. Each slot's transform (position, rotation,
-      //     scale) is identical for solid vs dashed because both children
-      //     live inside the same .hf-slot wrapper -- only the visibility
-      //     swap, not the geometry, changes.
-      var dashed = (version === 'mix')
-        ? (SCORE2[i] < MIX_DASHED_THRESHOLD)
+      //   * mix: per-slot coin flip from SCORE2 against the slider value.
+      //     density=90 -> ~90% dashed, density=10 -> ~10% dashed. The
+      //     coin flips are stable per slot (SCORE2 doesn't change), so
+      //     dragging the slider just shifts the threshold -- the same
+      //     specific slots are always the FIRST to become solid as the
+      //     slider drops, never reshuffling.
+      // Geometry is preserved either way: each slot has its solid and
+      // dashed children inside the same parent group with the same
+      // transform, so position / rotation / size from hugs.svg are
+      // identical for both states.
+      var dashed = inMix
+        ? (SCORE2[i] * 100 < density)
         : true;
       g.classList.toggle('is-dashed', dashed);
       var dashedChild = g.querySelector('.hf-slot__dashed');
@@ -741,6 +754,9 @@
     }
   }
 
+  var slider = document.getElementById('pile-density');
+  var densityVal = document.getElementById('pile-density-val');
+
   document.querySelectorAll('#pile-widget .pile-widget__seg-btn').forEach(function (b) {
     b.addEventListener('click', function () {
       document.querySelectorAll('#pile-widget .pile-widget__seg-btn').forEach(function (x) {
@@ -748,17 +764,22 @@
       });
       b.classList.add('is-active');
       version = b.dataset.version;
-      apply();  // apply() handles the density-row disabled state itself
+      // Restore the slider to this mode's last value -- each mode tracks
+      // its own slider position because the slider has different semantics
+      // per mode (visibility vs dashed-ratio).
+      density = densityByMode[version];
+      if (slider) slider.value = density;
+      if (densityVal) densityVal.textContent = density + '%';
+      apply();
     });
   });
-  var slider = document.getElementById('pile-density');
   if (slider) {
     slider.addEventListener('input', function (e) {
       density = parseInt(e.target.value, 10) || 0;
-      var v = document.getElementById('pile-density-val');
-      if (v) v.textContent = density + '%';
-      // Density is global now -- every mode needs to re-evaluate which
-      // slots are visible.
+      // Remember this value for the active mode so it persists across
+      // mode switches.
+      densityByMode[version] = density;
+      if (densityVal) densityVal.textContent = density + '%';
       apply();
     });
   }
