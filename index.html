@@ -385,8 +385,20 @@
       return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
   }
+  // Two independent stable scores per slot:
+  //   SCORE  -> drives visibility via the density threshold (every mode).
+  //   SCORE2 -> drives the dashed/solid coin flip in Mix mode. Independent
+  //             seed so dashed-or-solid identity doesn't track which slots
+  //             are visible -- dragging density just adds/removes slots
+  //             without reshuffling who's dashed.
   var SCORE = [];
-  slots.forEach(function (g, i) { SCORE[i] = rng(i * 2654435761 + 7)(); });
+  var SCORE2 = [];
+  slots.forEach(function (g, i) {
+    SCORE[i]  = rng(i * 2654435761 + 7)();
+    SCORE2[i] = rng(i * 2654435761 + 13)();
+  });
+  // Threshold for Mix's dashed:solid split. 0.5 == ~half dashed, half solid.
+  var MIX_DASHED_THRESHOLD = 0.5;
 
   // Twinkle is now the first button and the default landing state so the
   // page lands on the animated view -- the other modes sit to the right.
@@ -467,10 +479,19 @@
       g.classList.toggle('is-hidden', !visible);
       if (visible) visibleSlots.push(i);
 
-      // Dashed vs solid is now purely a function of mode:
-      //   - twinkle / lrtwinkle  -> dashed (the regular logo twinkles on top)
-      //   - mix                  -> solid  (the original colorful pile)
-      var dashed = (version !== 'mix');
+      // Dashed vs solid:
+      //   - twinkle / lrtwinkle / wave -> always dashed (regular layer
+      //     either twinkles or sweeps on top, depending on mode).
+      //   - mix -> per-slot coin flip via SCORE2 against
+      //     MIX_DASHED_THRESHOLD. Stable across density changes, so
+      //     dashed identity sticks to specific slots regardless of how
+      //     many are visible. Each slot's transform (position, rotation,
+      //     scale) is identical for solid vs dashed because both children
+      //     live inside the same .hf-slot wrapper -- only the visibility
+      //     swap, not the geometry, changes.
+      var dashed = (version === 'mix')
+        ? (SCORE2[i] < MIX_DASHED_THRESHOLD)
+        : true;
       g.classList.toggle('is-dashed', dashed);
       var dashedChild = g.querySelector('.hf-slot__dashed');
       var solidChild = g.querySelector('.hf-slot__solid');
